@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"encoding/binary"
 	"time"
 
@@ -8,10 +9,16 @@ import (
 )
 
 var taskBucket = []byte("tasks")
+var completeBucket = []byte("complete")
 var db *bolt.DB
 
 type Task struct {
 	Key   int
+	Value string
+}
+
+type Complete struct {
+	Key   string
 	Value string
 }
 
@@ -23,7 +30,14 @@ func Init(dbPath string) error {
 	}
 	return db.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists(taskBucket)
-		return err
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists(completeBucket)
+		if err != nil {
+			return err
+		}
+		return nil
 	})
 }
 
@@ -34,6 +48,7 @@ func CreateTask(task string) (int, error) {
 		id64, _ := b.NextSequence()
 		id = int(id64)
 		key := itob(id)
+
 		return b.Put(key, []byte(task))
 	})
 	if err != nil {
@@ -66,6 +81,45 @@ func DeleteTask(key int) error {
 		b := tx.Bucket(taskBucket)
 		return b.Delete(itob(key))
 	})
+}
+
+func CompleteTask(value string) error {
+
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(completeBucket)
+		t := time.Now()
+
+		return b.Put([]byte(t.Format(time.RFC3339)), []byte(value))
+	})
+}
+
+func TodaysTask() ([]Complete, error) {
+
+	var tasks []Complete
+	err := db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(completeBucket)
+		c := b.Cursor()
+		//k, v := c.First()
+
+		min := []byte(time.Now().AddDate(0, 0, -1).Format(time.RFC3339))
+		max := []byte(time.Now().AddDate(0, 0, 0).Format(time.RFC3339))
+
+		for k, v := c.Seek(min); k != nil && bytes.Compare(k, max) <= 0; k, v = c.Next() {
+			//fmt.Println(string(k), string(v))
+			tasks = append(tasks, Complete{
+				Key:   string(k),
+				Value: string(v),
+			})
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return tasks, nil
+
 }
 
 func itob(v int) []byte {

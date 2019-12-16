@@ -7,12 +7,15 @@ import (
 
 	"task/cmd"
 	"task/db"
+
 	homedir "github.com/mitchellh/go-homedir"
 )
 
 func main() {
 	home, _ := homedir.Dir()
+	//fmt.Println(home)
 	dbPath := filepath.Join(home, "tasks.db")
+
 	must(db.Init(dbPath))
 	must(cmd.RootCmd.Execute())
 }
